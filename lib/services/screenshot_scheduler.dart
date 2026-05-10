@@ -74,7 +74,9 @@ class ScreenshotScheduler extends GetxService {
     final name = '${DateTime.now().millisecondsSinceEpoch}_${_uuid.v4()}.png';
     final path = p.join(shotDir.path, name);
 
-    final ok = await captureScreenToFile(path);
+    final prefs = Get.find<PreferencesService>();
+    final soundOn = prefs.screenshotSoundEnabled;
+    final ok = await captureScreenToFile(path, playShutterSound: soundOn);
     if (ok) {
       _screenCaptureDeniedDialogShown = false;
     } else {
@@ -111,7 +113,7 @@ class ScreenshotScheduler extends GetxService {
       return;
     }
 
-    await playScreenshotCapturedFeedback();
+    await playScreenshotCapturedFeedback(playSound: soundOn);
 
     final capturedAt = DateTime.now();
     final slotStart = CloudService.slotStartFor(capturedAt);

@@ -9,6 +9,7 @@
 #include <flutter/standard_method_codec.h>
 
 #include <shellapi.h>
+#include <powrprof.h>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -162,10 +163,20 @@ bool FlutterWindow::OnCreate() {
   // window is shown. It is a no-op if the first frame hasn't completed yet.
   flutter_controller_->ForceRedraw();
 
+  HWND hwnd = GetHandle();
+  if (hwnd != nullptr) {
+    suspend_resume_registration_ = RegisterSuspendResumeNotification(
+        hwnd, DEVICE_NOTIFY_WINDOW_HANDLE);
+  }
+
   return true;
 }
 
 void FlutterWindow::OnDestroy() {
+  if (suspend_resume_registration_) {
+    UnregisterSuspendResumeNotification(suspend_resume_registration_);
+    suspend_resume_registration_ = nullptr;
+  }
   if (g_kb_hook) {
     UnhookWindowsHookEx(g_kb_hook);
     g_kb_hook = nullptr;
@@ -197,8 +208,10 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
   switch (message) {
     case WM_POWERBROADCAST:
+      // Suspend: stop session before sleep; OS may freeze the process immediately after.
       if (flutter_controller_ && wparam == PBT_APMSUSPEND) {
         NotifyDartSuspendOrTerminate(flutter_controller_->engine());
+        return TRUE;
       }
       break;
     case WM_ENDSESSION:

@@ -29,6 +29,21 @@ class PreferencesService extends GetxService {
   Future<void> setScreenshotIntervalMinutes(int m) =>
       _p.setInt(_kScreenshotInterval, m.clamp(1, 120));
 
+  /// macOS shutter via `screencapture`, plus optional app feedback on Windows/Linux.
+  bool get screenshotSoundEnabled =>
+      _p.getBool(_kScreenshotSoundEnabled) ?? true;
+
+  Future<void> setScreenshotSoundEnabled(bool v) =>
+      _p.setBool(_kScreenshotSoundEnabled, v);
+
+  /// macOS: user dismissed the keyboard/input-permission dialog ("Not now") — do not re-show on
+  /// every launch until Accessibility becomes trusted again (then we clear this).
+  bool get macInputPermissionNagSuppressed =>
+      _p.getBool(_kMacInputPermissionNagSuppressed) ?? false;
+
+  Future<void> setMacInputPermissionNagSuppressed(bool v) =>
+      _p.setBool(_kMacInputPermissionNagSuppressed, v);
+
   /// Core product behavior — aggregated counts only, not key contents.
   bool get keyboardMetricsEnabled => true;
 
@@ -40,6 +55,9 @@ class PreferencesService extends GetxService {
 
   static const _kPrivacyConsent = 'privacy_consent_v1';
   static const _kScreenshotInterval = 'screenshot_interval_minutes';
+  static const _kScreenshotSoundEnabled = 'screenshot_sound_enabled_v1';
+  static const _kMacInputPermissionNagSuppressed =
+      'mac_input_permission_nag_suppressed_v1';
   static const _kSessionMemo = 'session_memo_v1';
   static const _kTrackingHeartbeatMs = 'tracking_heartbeat_wall_ms_v2';
   static const _kTrackingHeartbeatSid = 'tracking_heartbeat_session_uuid_v2';

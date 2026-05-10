@@ -6,18 +6,28 @@ import 'native_desktop.dart';
 
 /// Saves a PNG to [outputPath]: prefers the **foreground work window** (not this app) on macOS,
 /// otherwise falls back to full primary display. Requires screen-recording permission on macOS.
-Future<bool> captureScreenToFile(String outputPath) async {
+///
+/// [playShutterSound]: on macOS, passes `-x` to `screencapture` when false (no system shutter).
+Future<bool> captureScreenToFile(
+  String outputPath, {
+  bool playShutterSound = true,
+}) async {
   final dir = Directory(p.dirname(outputPath));
   if (!dir.existsSync()) {
     dir.createSync(recursive: true);
   }
   if (Platform.isMacOS || Platform.isWindows) {
-    final workArea = await NativeDesktop.captureWorkAreaToFile(outputPath);
+    final workArea = await NativeDesktop.captureWorkAreaToFile(
+      outputPath,
+      playShutterSound: playShutterSound,
+    );
     if (workArea) return true;
   }
   if (Platform.isMacOS) {
-    // No `-x`: macOS plays the standard screenshot shutter sound (user expects audible cue).
-    final r = await Process.run('screencapture', ['-C', outputPath]);
+    final args = playShutterSound
+        ? <String>['-C', outputPath]
+        : <String>['-x', '-C', outputPath];
+    final r = await Process.run('screencapture', args);
     return r.exitCode == 0;
   }
   if (Platform.isWindows) {

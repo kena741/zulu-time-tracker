@@ -19,7 +19,6 @@ import 'themes/dark_theme.dart';
 import 'themes/light_theme.dart';
 import 'themes/theme_controller.dart';
 import 'utils/supabase_env.dart';
-import 'platform/native_desktop.dart';
 
 /// Loads env (same pattern as zemen_service), then starts the app.
 /// Use [envFile] `.env`, `.env.staging`, or `.env.production` per flavor entrypoint.
@@ -64,43 +63,12 @@ Future<void> bootstrap({required String envFile}) async {
 
   runApp(const ZuluTimeApp());
 
-  // Request desktop permissions on launch (so starting a session is smooth).
-  _maybePromptDesktopPermissionsOnLaunch();
-
   // Run after [runApp] so a HID / FFI failure never blocks the widget tree (blank window).
   try {
     await Get.find<HidTrackingService>().warmUp();
   } catch (e, st) {
     debugPrint('bootstrap: HidTrackingService.warmUp failed: $e\n$st');
   }
-}
-
-void _maybePromptDesktopPermissionsOnLaunch() {
-  if (!Platform.isMacOS) return;
-  if (!Get.isRegistered<PreferencesService>()) return;
-  final prefs = Get.find<PreferencesService>();
-  if (!prefs.privacyConsentAccepted) return;
-
-  WidgetsBinding.instance.addPostFrameCallback((_) async {
-    try {
-      final trusted = await NativeDesktop.isAccessibilityTrusted();
-      if (!trusted) {
-        // This may show the system Accessibility prompt.
-        await NativeDesktop.requestAccessibilityPromptIfNeeded();
-        // Also show a gentle in-app hint once per launch.
-        Get.snackbar(
-          'Permission needed',
-          'Enable Accessibility for ZuluTime Tracker to record keyboard/mouse activity.\n'
-              'System Settings → Privacy & Security → Accessibility.',
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 6),
-        );
-      }
-
-      // Do not gate Screen Recording on CGPreflight alone — on newer macOS it can report false
-      // while capture works after Settings shows Screen & System Audio Recording enabled.
-    } catch (_) {}
-  });
 }
 
 /// When Supabase is configured, signing out returns the user to the login screen.

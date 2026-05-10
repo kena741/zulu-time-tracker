@@ -24,89 +24,211 @@ class ShellView extends GetView<ShellController> {
       }
     });
     return Scaffold(
-      body: Row(
-        children: [
-          Obx(
-            () {
-              final isExtended = MediaQuery.sizeOf(context).width > 1100;
-              return NavigationRail(
-              selectedIndex: controller.selectedIndex.value,
-              onDestinationSelected: (i) => controller.selectedIndex.value = i,
-              extended: isExtended,
-              // Flutter asserts: if extended==true then labelType must be null/none.
-              labelType:
-                  isExtended ? NavigationRailLabelType.none : NavigationRailLabelType.all,
-              leading: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Icon(Icons.timer, color: Theme.of(context).colorScheme.primary),
-              ),
-              destinations: const [
-                NavigationRailDestination(
-                  icon: Icon(Icons.play_circle_outline),
-                  label: Text('Timer'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.settings_outlined),
-                  label: Text('Settings'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.person_outline),
-                  label: Text('Account'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.privacy_tip_outlined),
-                  label: Text('Privacy'),
-                ),
-              ],
-              );
-            },
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Material(
-                  elevation: 0,
-                  color: Theme.of(context).colorScheme.surface,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 14,
-                    ),
-                    child: Row(
-                      children: [
-                        Text(
-                          'ZuluTime Tracker',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.bold,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Obx(
+                () {
+                  final isExtended = MediaQuery.sizeOf(context).width > 1100;
+                  final railTheme = NavigationRailTheme.of(context);
+                  final railBg = railTheme.backgroundColor ??
+                      Theme.of(context).colorScheme.surfaceContainerHigh;
+                  // Match Material navigation rail widths so layout does not overflow.
+                  final railWidth =
+                      isExtended ? (railTheme.minExtendedWidth ?? 256) : 80.0;
+
+                  return SizedBox(
+                    width: railWidth,
+                    height: constraints.maxHeight,
+                    child: Material(
+                      color: railBg,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: NavigationRail(
+                              backgroundColor: Colors.transparent,
+                              selectedIndex: controller.railIndex.value,
+                              onDestinationSelected: controller.selectRail,
+                              extended: isExtended,
+                              labelType: isExtended
+                                  ? NavigationRailLabelType.none
+                                  : NavigationRailLabelType.all,
+                              leading: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                child: Icon(
+                                  Icons.timer,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary,
+                                ),
                               ),
+                              destinations: const [
+                                NavigationRailDestination(
+                                  icon: Icon(Icons.play_circle_outline),
+                                  label: Text('Timer'),
+                                ),
+                                NavigationRailDestination(
+                                  icon: Icon(Icons.settings_outlined),
+                                  label: Text('Settings'),
+                                ),
+                                NavigationRailDestination(
+                                  icon: Icon(Icons.person_outline),
+                                  label: Text('Account'),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Obx(
+                            () => _RailPrivacyButton(
+                              extended: isExtended,
+                              selected: controller.privacySelected.value,
+                              onTap: controller.selectPrivacy,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Material(
+                      elevation: 0,
+                      color: Theme.of(context).colorScheme.surface,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 14,
                         ),
-                        const Spacer(),
-                        _SupabaseUserHeader(),
-                      ],
+                        child: Row(
+                          children: [
+                            Text(
+                              'ZuluTime Tracker',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                            const Spacer(),
+                            _SupabaseUserHeader(),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: Obx(
-                    () => IndexedStack(
-                      index: controller.selectedIndex.value,
-                      children: [
-                        TimerTabView(),
-                        SettingsTabView(),
-                        AccountTabView(),
-                        PrivacyTabView(),
-                      ],
+                    const Divider(height: 1),
+                    Expanded(
+                      child: Obx(
+                        () => IndexedStack(
+                          index: controller.bodyIndex,
+                          children: [
+                            TimerTabView(),
+                            SettingsTabView(),
+                            AccountTabView(),
+                            PrivacyTabView(),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Privacy entry pinned to the bottom of the navigation rail (not in the main destination list).
+class _RailPrivacyButton extends StatelessWidget {
+  const _RailPrivacyButton({
+    required this.extended,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final bool extended;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final railTheme = NavigationRailTheme.of(context);
+    final cs = Theme.of(context).colorScheme;
+    final Color iconColor = selected
+        ? (railTheme.selectedIconTheme?.color ?? cs.onSecondaryContainer)
+        : (railTheme.unselectedIconTheme?.color ?? cs.onSurfaceVariant);
+    final Color? bg = selected
+        ? (railTheme.indicatorColor ?? cs.secondaryContainer)
+        : null;
+
+    final icon = Icon(Icons.privacy_tip_outlined, size: 24, color: iconColor);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: extended ? 12 : 8,
+              vertical: 10,
+            ),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: extended
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          icon,
+                          const SizedBox(width: 12),
+                          Text(
+                            'Privacy',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  fontWeight:
+                                      selected ? FontWeight.w600 : FontWeight.w500,
+                                  color: iconColor,
+                                ),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          icon,
+                          const SizedBox(height: 4),
+                          Text(
+                            'Privacy',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: iconColor,
+                                ),
+                          ),
+                        ],
+                      ),
+              ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }

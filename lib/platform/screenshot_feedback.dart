@@ -2,9 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-/// Short feedback after a screenshot file is written. On macOS, `screencapture` is run
-/// without `-x` so the system shutter already played; we only add light haptics where supported.
-Future<void> playScreenshotCapturedFeedback() async {
+/// Short feedback after a screenshot file is written. On macOS the shutter is controlled by
+/// [playSound] via `screencapture` `-x`; this adds haptics / optional beeps elsewhere.
+Future<void> playScreenshotCapturedFeedback({bool playSound = true}) async {
+  if (!playSound) {
+    return;
+  }
+
   await HapticFeedback.lightImpact();
 
   if (Platform.isMacOS) {

@@ -44,6 +44,27 @@ class SettingsTabView extends GetView<SettingsController> {
                             'Add SUPABASE_URL and SUPABASE_ANON_KEY to assets .env to enable cloud tracking.',
                           ),
                         ),
+                      if (GetPlatform.isDesktop)
+                        StatefulBuilder(
+                          builder: (context, setState) {
+                            final prefs = controller.prefs;
+                            return SwitchListTile(
+                              title: const Text('Screenshot sound'),
+                              subtitle: Text(
+                                'Play the macOS shutter (and brief feedback on Windows/Linux) '
+                                'when a Work Diary screenshot is saved.',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                              ),
+                              value: prefs.screenshotSoundEnabled,
+                              onChanged: (v) async {
+                                await prefs.setScreenshotSoundEnabled(v);
+                                setState(() {});
+                              },
+                            );
+                          },
+                        ),
                       ListTile(
                         title: const Text('Appearance'),
                         trailing: Obx(() {

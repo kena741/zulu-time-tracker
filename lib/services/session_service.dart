@@ -40,12 +40,21 @@ class SessionService extends GetxService {
   int _debugAccScroll = 0;
   int _debugAccClicks = 0;
 
-  bool _macPermissionDialogShown = false;
+  /// Avoid stacking macOS permission dialogs if [refreshKeyboardToggle] re-enters monitoring.
+  bool _suppressMacInputPermissionDialogOnce = false;
+
+  bool _macInputPermissionDialogOpen = false;
 
   /// Updated every tick while running; used to detect machine sleep in the same process.
   DateTime? _lastWallClockTick;
 
+  /// Long idle gap → treat as sleep/hang and end session (see [_resumeGapForSleepDetection]).
   static const _resumeGapEndsSession = Duration(minutes: 3);
+
+  /// Windows often skips Flutter lifecycle on sleep; use a shorter wall-clock gap so the first
+  /// timer tick after wake still ends the session when native suspend wasn't delivered.
+  static Duration get _resumeGapForSleepDetection =>
+      Platform.isWindows ? const Duration(seconds: 25) : _resumeGapEndsSession;
   static const _coldStartHeartbeatMaxAgeMs = 60000;
 
   @override
@@ -86,7 +95,7 @@ class SessionService extends GetxService {
     if (!isRunning.value) return;
     final last = _lastWallClockTick;
     if (last == null) return;
-    if (DateTime.now().difference(last) > _resumeGapEndsSession) {
+    if (DateTime.now().difference(last) > _resumeGapForSleepDetection) {
       await stopSession(endedAt: last);
     }
   }
@@ -171,7 +180,7 @@ class SessionService extends GetxService {
       if (!isRunning.value) return;
       final now = DateTime.now();
       final last = _lastWallClockTick;
-      if (last != null && now.difference(last) > _resumeGapEndsSession) {
+      if (last != null && now.difference(last) > _resumeGapForSleepDetection) {
         // Windows sleep/resume doesn't always surface a Flutter lifecycle callback.
         // Catch it here on the first tick after wake and end the session.
         unawaited(stopSession(endedAt: last));
@@ -213,58 +222,64 @@ class SessionService extends GetxService {
   Future<void> _startInputMonitoring() async {
     await NativeDesktop.stopKeyboardMonitoring();
     if (Platform.isMacOS) {
-      // macOS global input monitors may require Accessibility trust.
+      final prefs = Get.find<PreferencesService>();
       final trusted = await NativeDesktop.isAccessibilityTrusted();
+      final skipPermDialog = _suppressMacInputPermissionDialogOnce;
+      _suppressMacInputPermissionDialogOnce = false;
+
       if (kDebugMode) debugPrint('macOS Accessibility trusted: $trusted');
-      if (!trusted) {
-        // Best-effort: prompt + open settings so the user can enable the app.
-        // Note: Keyboard capture is often gated by Privacy & Security → Input Monitoring.
+      if (trusted) {
+        await prefs.setMacInputPermissionNagSuppressed(false);
+      } else if (!prefs.macInputPermissionNagSuppressed && !skipPermDialog) {
+        // Keyboard capture is often gated by Input Monitoring and/or Accessibility.
         await NativeDesktop.requestAccessibilityPromptIfNeeded();
-        unawaited(NativeDesktop.openPrivacySettings());
         if (kDebugMode) {
           debugPrint(
-            'macOS permission needed: enable this app under Privacy & Security → Input Monitoring '
-            '(and/or Accessibility), then re-launch.',
+            'macOS permission needed: Input Monitoring and/or Accessibility — '
+            'use Open Settings in the dialog if needed.',
           );
         }
 
-        if (!_macPermissionDialogShown) {
-          _macPermissionDialogShown = true;
-          // No BuildContext needed: GetX can present dialogs globally.
-          Get.dialog(
-            AlertDialog(
-              title: const Text('Permission needed for keyboard tracking'),
-              content: const Text(
-                'To count keyboard activity on macOS, enable this app in:\n\n'
-                'System Settings → Privacy & Security → Input Monitoring\n'
-                '(and sometimes also Accessibility).\n\n'
-                'After enabling, quit and re-launch the app.',
+        if (!_macInputPermissionDialogOpen) {
+          _macInputPermissionDialogOpen = true;
+          try {
+            await Get.dialog<void>(
+              AlertDialog(
+                title: const Text('Permission needed for keyboard tracking'),
+                content: const Text(
+                  'To count keyboard activity on macOS, enable this app in:\n\n'
+                  'System Settings → Privacy & Security → Input Monitoring\n'
+                  '(and sometimes also Accessibility).\n\n'
+                  'After enabling, use Retry or restart the app.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () async {
+                      await NativeDesktop.openPrivacySettings();
+                    },
+                    child: const Text('Open Settings'),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      Get.back();
+                      await refreshKeyboardToggle();
+                    },
+                    child: const Text('Retry'),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      await prefs.setMacInputPermissionNagSuppressed(true);
+                      Get.back();
+                    },
+                    child: const Text('Don\'t ask again'),
+                  ),
+                ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () async {
-                    await NativeDesktop.openPrivacySettings();
-                  },
-                  child: const Text('Open Settings'),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    Get.back();
-                    // Re-check + restart monitoring (still may require relaunch).
-                    await refreshKeyboardToggle();
-                  },
-                  child: const Text('Retry'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Get.back();
-                  },
-                  child: const Text('Not now'),
-                ),
-              ],
-            ),
-            barrierDismissible: true,
-          );
+              barrierDismissible: false,
+            );
+          } finally {
+            _macInputPermissionDialogOpen = false;
+          }
         }
       }
     }
@@ -320,7 +335,10 @@ class SessionService extends GetxService {
     await NativeDesktop.stopKeyboardMonitoring();
   }
 
-  Future<void> refreshKeyboardToggle() => _maybeStartKeyboard();
+  Future<void> refreshKeyboardToggle() async {
+    _suppressMacInputPermissionDialogOnce = true;
+    await _maybeStartKeyboard();
+  }
 
   static int _minuteMaskForRange(DateTime a, DateTime b) {
     if (!b.isAfter(a)) return 0;

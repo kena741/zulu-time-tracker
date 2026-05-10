@@ -104,11 +104,15 @@ private func passesWindowCaptureFilters(_ entry: [String: Any]) -> Bool {
   return true
 }
 
-private func runScreencaptureWindow(windowId: UInt32, to path: String) -> Bool {
+private func runScreencaptureWindow(windowId: UInt32, to path: String, mute: Bool) -> Bool {
   let proc = Process()
   proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-  // No `-x` so the system shutter sound plays (matches full-screen capture behavior).
-  proc.arguments = ["-l", String(windowId), path]
+  // `-x` disables the system shutter sound when requested.
+  if mute {
+    proc.arguments = ["-x", "-l", String(windowId), path]
+  } else {
+    proc.arguments = ["-l", String(windowId), path]
+  }
   do {
     try proc.run()
     proc.waitUntilExit()
@@ -120,7 +124,7 @@ private func runScreencaptureWindow(windowId: UInt32, to path: String) -> Bool {
 
 /// Capture the user's **foreground work app** when possible (e.g. Chrome, Cursor), not merely the
 /// first non-tracker window in z-order (which could still be our UI if a helper PID was missed).
-private func captureFrontNonSelfWindow(to path: String) -> Bool {
+private func captureFrontNonSelfWindow(to path: String, mute: Bool) -> Bool {
   guard let cfList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as NSArray?
   else {
     return false
@@ -138,7 +142,7 @@ private func captureFrontNonSelfWindow(to path: String) -> Bool {
       guard let ownerPid = entry["kCGWindowOwnerPID"] as? Int, ownerPid == targetPid else { continue }
       guard passesWindowCaptureFilters(entry) else { continue }
       guard let wid = entry["kCGWindowNumber"] as? UInt32 else { continue }
-      if runScreencaptureWindow(windowId: wid, to: path) { return true }
+      if runScreencaptureWindow(windowId: wid, to: path, mute: mute) { return true }
     }
   }
 
@@ -148,7 +152,7 @@ private func captureFrontNonSelfWindow(to path: String) -> Bool {
     if pidBelongsToOurApp(ownerPid, listedPids: listed) { continue }
     guard passesWindowCaptureFilters(entry) else { continue }
     guard let wid = entry["kCGWindowNumber"] as? UInt32 else { continue }
-    if runScreencaptureWindow(windowId: wid, to: path) { return true }
+    if runScreencaptureWindow(windowId: wid, to: path, mute: mute) { return true }
   }
   return false
 }
@@ -251,11 +255,21 @@ class MainFlutterWindow: NSWindow {
         }
         result(nil)
       case "captureWorkAreaToFile":
-        guard let path = call.arguments as? String else {
+        let path: String
+        var mute = false
+        if let s = call.arguments as? String {
+          path = s
+        } else if let m = call.arguments as? [String: Any],
+                  let p = m["path"] as? String {
+          path = p
+          if let playShutter = m["playShutterSound"] as? Bool {
+            mute = !playShutter
+          }
+        } else {
           result(false)
           return
         }
-        result(captureFrontNonSelfWindow(to: path))
+        result(captureFrontNonSelfWindow(to: path, mute: mute))
       case "getIdleSeconds":
         result(idleSecondsSinceLastInput())
       case "isAccessibilityTrusted":

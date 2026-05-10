@@ -139,11 +139,20 @@ class NativeDesktop {
   /// Captures the user's active **work** window (frontmost window not belonging to this app)
   /// when the native implementation supports it (macOS). Returns `false` to let callers fall back
   /// to full-screen capture.
-  static Future<bool> captureWorkAreaToFile(String outputPath) async {
+  /// [playShutterSound]: macOS `screencapture` shutter when false uses `-x`.
+  static Future<bool> captureWorkAreaToFile(
+    String outputPath, {
+    bool playShutterSound = true,
+  }) async {
     if (!_desktop) return false;
     try {
-      final v =
-          await _channel.invokeMethod<bool>('captureWorkAreaToFile', outputPath);
+      final v = await _channel.invokeMethod<bool>(
+        'captureWorkAreaToFile',
+        <String, dynamic>{
+          'path': outputPath,
+          'playShutterSound': playShutterSound,
+        },
+      );
       return v ?? false;
     } on MissingPluginException {
       return false;
